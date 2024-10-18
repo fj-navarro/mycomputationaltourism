@@ -2,9 +2,10 @@ project:
   type: book
 
 book:
-  title: "mycomputtour"
-  author: "Norah Jones"
-  date: "16/10/2024"
+  title: "Contemporary Computational Methods for Hospitality and Tourism"
+  subtitle: "With Practical Examples in R"
+  author: "Francisco J. Navarro"
+  date: "10/16/2024"
   chapters:
     - index.qmd
     - intro.qmd

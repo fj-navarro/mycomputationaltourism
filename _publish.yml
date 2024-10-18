@@ -1,0 +1,4 @@
+- source: project
+  netlify:
+    - id: b9e6a8fa-9e9f-4259-b383-f5a187d09c03
+      url: 'https://jovial-kleicha-1b320f.netlify.app'
