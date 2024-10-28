@@ -316,13 +316,13 @@ num_turistas_arima <- arima(train,
 summary(num_turistas_arima)
 ```
 
-3.    We check the residuals:
+3.  We check the residuals:
 
 ```{r}
 checkresiduals(num_turistas_arima)
 ```
 
-4.    We now forecast the trained model:
+4.  We now forecast the trained model:
 
 ```{r}
 num_turistas_fc <- forecast(num_turistas_arima, h = 12)
@@ -339,20 +339,20 @@ test_forecast(actual = num_turistas_ts,
 
 ### Automatic ARIMA
 
-1.    We apply the function `auto.arima`to the ts object:
+1.  We apply the function `auto.arima`to the ts object:
 
 ```{r}
 num_turistas_arima2 <- auto.arima(train)
 summary(num_turistas_arima2)
 ```
 
-2.    We check the residuals:
+2.  We check the residuals:
 
 ```{r}
 checkresiduals(num_turistas_arima2)
 ```
 
-4.    We now forecast the trained model:
+4.  We now forecast the trained model:
 
 ```{r}
 num_turistas_fc2 <- forecast(num_turistas_arima2, h = 12)
@@ -367,7 +367,7 @@ test_forecast(actual = num_turistas_ts,
               test = test)
 ```
 
-6.    We can improvise with different search parameters:
+6.  We can improvise with different search parameters:
 
 ```{r}
 num_turistas_arima3 <- auto.arima(train,
@@ -381,4 +381,4 @@ summary(num_turistas_arima3)
 
 ## Machine Learning
 
-Pending writing **Random Forest**, **GBM**, and **AutoML**.
+Pending the writing of **Random Forest**, **GBM**, and **AutoML**.
