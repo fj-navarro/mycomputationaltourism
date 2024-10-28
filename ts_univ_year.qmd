@@ -1,0 +1,251 @@
+# Univariate and Yearly
+
+## Spanish Outbound Visitors to USA
+
+### Loading Libraries
+
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+library(TSstudio)
+library(tidyverse)
+library(forecast)
+library(dplyr)
+library(lubridate)
+library(plotly)
+```
+
+### Importing the Dataset
+
+```{r message=FALSE}
+out_world <- read_excel("data/out_world.xlsx", skip = 5)
+excel_sheets("data/out_world.xlsx")
+```
+
+### Characterizing the TS Dataset
+
+```{r}
+class(out_world)
+head(out_world)
+```
+
+### Preprocessing
+
+1.  Pivot the table to tidy the data:
+
+```{r}
+names(out_world)[1] <- "countries"
+out_world_pvt <- out_world |>
+  pivot_longer(cols = starts_with(c("19", "20")),
+               names_to = "years",
+               values_to = "tourists", 
+               values_drop_na = FALSE)
+head(out_world_pvt)
+```
+
+2.  Select and order the columns for the analysis:
+
+```{r}
+out_world_adj1 <- out_world_pvt |> 
+  select("countries","years","tourists") |>
+  relocate(years) |>
+  filter(countries == "United States of America")
+head(out_world_adj1)
+```
+
+3.  Convert the date field in a Date object:
+
+```{r}
+out_world_date <- out_world_adj1 |>
+  mutate(out_world_adj1, 
+         years = as.Date(out_world_adj1$years,
+                         format = "%Y"))
+head(out_world_date)
+```
+
+4.  Arrange the data by date:
+
+```{r}
+out_world_ord <- out_world_date |>
+  arrange(years)
+head(out_world_ord)
+```
+
+5.  Set the start and end year of the ts:
+
+```{r}
+start_point = year(min(out_world_ord$years))
+```
+
+6.  Create a ts object:
+
+```{r}
+out_usa_ts <- ts(out_world_ord$tourists,
+                 start = start_point,
+                 frequency = 1)
+ts_info(out_usa_ts)
+```
+
+7.  Plot the ts object:
+
+```{r}
+ts_plot(out_usa_ts,
+        title = "Spanish residents visiting USA",
+        Xtitle = "Years",
+        Ytitle = "Thousands of visitors")
+```
+
+### Decomposition of TS
+
+1.  Calculate MA of the ts object:
+
+```{r}
+out_usa_ma <- ts_ma(out_usa_ts,
+                    n = c(3,5),
+                    plot = TRUE,
+                    multiple = TRUE)
+par(mfrow=c(1,2))
+plot.ts(out_usa_ma$ma_3)
+plot.ts(out_usa_ma$ma_5)
+```
+
+```{r echo=FALSE}
+# No es posible hacerlo
+# out_usa_dc <- decompose(out_usa_ts, type = "multiplicative")
+```
+
+### Correlation with its lags
+
+1.  Use the `acf` function:
+
+```{r}
+acf(out_usa_ts, lag.max = 12)
+```
+
+2.  We now plot the lags:
+
+```{r}
+ts_lags(out_usa_ts)
+```
+
+## Spanish Outbound vs Income per Capita
+
+We're looking for the correlation between Spanish outbound visitors to USA and the income per capita of Spanish.
+
+### Importing the Income per Capita series
+
+1.  We import the data set from the Spanish INE:
+
+<!-- source: https://www.ine.es/ss/Satellite?blobcol=urldata&blobheader=Unknown+format&blobheadername1=Content-Disposition&blobheadervalue1=attachment%3B+filename%3D116_ICV_geo_23.xlsx&blobkey=urldata&blobtable=MungoBlobs&blobwhere=908%2F335%2F116_ICV_geo_23.xlsx&ssbinary=true -->
+
+```{r message=FALSE}
+spain_income <- read_excel("data/renta_percapita_esp.xlsx", sheet = "RDB", skip = 3)
+```
+
+2.  Characterize the ts dataset
+
+```{r}
+class(spain_income)
+head(spain_income)
+```
+
+3.  Extract the date to be analysed:
+
+```{r}
+spain_income_adj <- spain_income |>
+  select(cols = starts_with("Valor"))
+spain_income_adj <- spain_income_adj[1,]
+```
+
+4.  Name the first row with years and pivot the table:
+
+```{r}
+# First we name the first row with years
+ncol(spain_income_adj)
+for(i in 1:ncol(spain_income_adj)){
+  colnames(spain_income_adj)[i] <- as.numeric(i+2009)
+}
+# Second, we pivot the table and convert years as Date
+spain_income_pivot <- spain_income_adj |>
+  pivot_longer(cols = starts_with(c("20", "21")),
+               names_to = "years",
+               values_to = "income_per_capita", 
+               values_drop_na = TRUE)
+```
+
+```{r}
+spain_income_table <- spain_income_pivot |>
+  mutate(years = as.Date(spain_income_pivot$years,
+                         format = "%Y"))
+
+head(spain_income_table)
+```
+
+4.  Order the table:
+
+```{r}
+spain_income_ord <- spain_income_table |>
+  arrange(years)
+```
+
+5.  Create a ts object
+
+```{r}
+start_year2 = year(min(spain_income_ord$years))
+spain_income_ts <- ts(spain_income_ord$"income_per_capita",
+                      start = start_year2,
+                      frequency = 1)
+ts_info(spain_income_ts)
+```
+
+7.  Plot the 2nd ts object:
+
+```{r}
+ts_plot(spain_income_ts)
+```
+
+### Cross-correlation analysis
+
+1.  Make the two series have the same time frame:
+
+```{r}
+out_usa_cc <- window(out_usa_ts, start = 2010, end = 2020)
+```
+
+2.  Plot the two ts objects:
+
+```{r}
+plot_ly(x = time(out_usa_cc),
+        y = out_usa_cc,
+        type = "scatter",
+        mode = "line",
+        name = "Spanish visitors to USA") |>
+  add_lines(x = time(spain_income_ts),
+            y = spain_income_ts,
+            name = "Spanish income per capita",
+            yaxis = "y2") |>
+  layout(title = "Correlation Analysis Outbound USA vs Income per Capita", 
+         yaxis2 = list(overlaying = "y", 
+                       side = "right", 
+                       title = "Thousands",
+                       showgrid = FALSE), 
+         yaxis = list(title = "Thousands of visitors", 
+         showgrid = FALSE),
+        legend = list(orientation = "h"),
+        margin = list(l = 50, r = 50, b = 50, t = 50, pad = 2))
+```
+
+3.  Use the `ccf` function:
+
+```{r}
+ccf(out_usa_ts, spain_income_ts, lag.max = 6)
+```
+
+4.  Plot the relationship between both ts objects:
+
+```{r}
+ccf_plot(x = out_usa_ts, y = spain_income_ts, lags = 0:6)
+```
+
+5.  Conclusion:
+
+No correlation exists between the two ts objects.
