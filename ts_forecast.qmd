@@ -1,0 +1,384 @@
+# Forecast Univariate Monthly
+
+This forecast exercise will focus on the Incoming Total Number of Tourists to Spain.
+
+## Summary of Steps
+
+This is a summary of the steps for forecasting a ts:
+
+1.  **Choose** a forecast method:
+    -   Model-based: regression, autoregressive.
+    -   Data-driven: Smoothing models are considered data-driven approaches, the most commonly employed is Exponential Smoothing or Holt-Winters methods. Other methods include naive models and neural networks.
+2.  **Evaluate** the forecast performance:
+    -   Residual analysis (with the training partition):
+        -   `checkresiduals`
+    -   Score the forecast:
+        -   `forecast`
+        -   `accuracy` (with the test partition): provides error metrics for both the training (fitted values) and testing (the forecast)
+        -   `test_forecast`: evaluates the fit of the model on the training and testing
+    -   Forecast benchmark:
+        -   `naive`/`snaive` (they are baseline models)
+3.  **Recalibrate** the model's weights or coefficients with the full series:
+    -   `plot_forecast`
+4.  Handle forecast **uncertainty**:
+    -   Confidence intervals:
+        -   `forecast` ---\> arg: `level`
+    -   Simulation:
+        -   `forecast_sim`
+    -   Horse race approach:
+        -   `train_model`
+
+## Loading libraries
+
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+library(TSstudio)
+library(tidyverse)
+library(forecast)
+library(dplyr)
+library(lubridate)
+library(plotly)
+library(stringr)
+library(anytime)
+```
+
+<!-- Bring to this file the ts object from ts_univ_month.qmd -->
+
+```{r message=FALSE, echo=FALSE, results='hide'}
+num_turistas_raw <- read_excel("data/num_turistas.xlsx", skip = 6)
+class(num_turistas_raw)
+head(num_turistas_raw)
+num_turistas_adj <- num_turistas_raw[2,]
+head(num_turistas_adj)
+num_turistas_pvt <- num_turistas_adj |>
+  pivot_longer(cols = contains("M"),
+               names_to = "date",
+               values_to = "tourists", 
+               values_drop_na = FALSE)
+head(num_turistas_pvt)
+# Change the "M" character for "-"
+num_turistas_pvt$date <- str_replace(num_turistas_pvt$date, "M", "-")
+num_turistas_pvt$date <- anydate(num_turistas_pvt$date)
+head(num_turistas_pvt)
+num_turistas_ord <- num_turistas_pvt |>
+  arrange(date)
+head(num_turistas_ord)
+class(num_turistas_ord)
+# Identify if na exist
+any(is.na(num_turistas_ord))
+# Identify the ts outliers
+tsoutliers(num_turistas_ord$tourists)
+# Set the start and end year of the ts
+start_point <- c(year(min(num_turistas_ord$date)), month(min(num_turistas_ord$date)))
+# Create a ts object
+num_turistas_ts <- ts(num_turistas_ord$tourists,
+                      start = start_point,
+                      frequency = 12)
+head(num_turistas_ts)
+ts_info(num_turistas_ts)
+```
+
+## Characterize the ts Series
+
+We rescue the ts object from previous chapter and plot it:
+
+```{r}
+ts_info(num_turistas_ts)
+plot(num_turistas_ts)
+```
+
+## Split the series
+
+We use the `ts_split` function from the **TSstudio package** to split the ts object:
+
+```{r}
+num_turistas_partitions <- ts_split(num_turistas_ts, 
+                                    sample.out = 12)
+train <- num_turistas_partitions$train
+test <- num_turistas_partitions$test
+ts_info(train)
+ts_info(test)
+```
+
+## (Naive) Benchmark Model
+
+1.  Create a naive model as a baseline model:
+
+```{r}
+num_turistas_naive <- naive(train, h = 12)
+```
+
+2.  Review the performance of the mdoel on the training and testing partitions:
+
+```{r}
+test_forecast(actual = num_turistas_ts,
+              forecast.obj = num_turistas_naive,
+              test = test)
+```
+
+3.  Evaluate the accuracy of the naive model on the training and test partitions:
+
+```{r}
+accuracy(num_turistas_naive, test)
+```
+
+4.  However, as the `num_turistas_ts` object has a strong season pattern, it make sense to use a seasonal naive model:
+
+```{r}
+num_turistas_snaive <- snaive(train, h =12)
+test_forecast(actual = num_turistas_ts,
+              forecast.obj = num_turistas_snaive,
+              test = test)
+accuracy(num_turistas_snaive, test)
+```
+
+## MA Model
+
+1.  Apply MA as a smoothing method:
+
+```{r}
+num_turistas_ma <- ma(train, order = 3, centre = TRUE)
+anyNA(train)
+anyNA(num_turistas_ma)
+par(mfrow = c(1,2))
+plot(num_turistas_ts)
+plot(num_turistas_ma)
+```
+
+2.  Forecast the smoothed series:
+
+```{r}
+num_turistas_ma_fc <- forecast(train, h = 12)
+plot(num_turistas_ma_fc)
+```
+
+3.  Now we evaluate the model's forecast performance:
+
+```{r}
+accuracy(num_turistas_ma_fc, test)
+test_forecast(actual = num_turistas_ts,
+              forecast.obj = num_turistas_ma_fc,
+              test = test)
+```
+
+## Exponential Smoothing
+
+### Simple exponential smoothing
+
+The Simple Exponential Smoothing model is most suitable when the ts has **no trend and no seasonal** components. The model will only forecast the level of the series, but will not capture any short-term oscillation.
+
+1.  We use the `train` partition to train a `SES` model:
+
+```{r}
+num_turistas_ses <- ses(train, h = 12, initial = "optimal")
+```
+
+2.  Now we review the model details:
+
+```{r}
+num_turistas_ses$model
+```
+
+3.  Evaluate the ses model's performance:
+
+```{r}
+accuracy(num_turistas_ses, test)
+test_forecast(actual = num_turistas_ts,
+              forecast.obj = num_turistas_ses,
+              test = test)
+```
+
+4.  Plot the model:
+
+```{r}
+plot_forecast(num_turistas_ses)
+```
+
+### Holt model
+
+The Holt model, also known as double exxponential smoothing model, is an expanded version of `SES`. This method is best when the ts has a strong linear **trend and no seasonal** component.
+
+1.  We use the `train` partition to train a `Holt` model:
+
+```{r}
+num_turistas_holt <- holt(train, 
+                          h = 12, 
+                          beta = 0.75,
+                          initial = "optimal",
+                          exponential = FALSE)
+```
+
+2.  Now we review the model details:
+
+```{r}
+num_turistas_holt$model
+```
+
+3.  Evaluate the Holt model's performance:
+
+```{r}
+accuracy(num_turistas_holt, test)
+test_forecast(actual = num_turistas_ts,
+              forecast.obj = num_turistas_holt,
+              test = test)
+```
+
+4.  Plot the model:
+
+```{r}
+plot_forecast(num_turistas_holt)
+```
+
+### Holt-Winters model
+
+The Holt-Winters model is the most advanced exponential smoothing model. Itself an extended version of the Holt model, it is most suitable when the series **has both trend and seasonal** components.
+
+1.  We use the `train` partition to train a `HoltWinters` model:
+
+```{r}
+num_turistas_hw <- hw(train, 
+                      h = 12,
+                      seasonal = "additive",
+                      initial = "optimal")
+```
+
+2.  Now we review the model details:
+
+```{r}
+num_turistas_hw$model
+```
+
+3.  Evaluate the `HoltWinters` model's performance:
+
+```{r}
+accuracy(num_turistas_hw, test)
+test_forecast(actual = num_turistas_ts,
+              forecast.obj = num_turistas_hw,
+              test = test)
+```
+
+4.  Plot the model:
+
+```{r}
+plot_forecast(num_turistas_hw)
+```
+
+## Linear Regression
+
+1.  We will train a `lm` model with the `tslm` function:
+
+```{r}
+num_turistas_lm <- tslm(train ~season + trend + I(trend^2))
+summary(num_turistas_lm)
+```
+
+2.  Now we forecast the corresponding observations:
+
+```{r}
+num_turistas_flm <- forecast(num_turistas_lm, h = 12)
+```
+
+3.  Evaluate the `lm` model's forecast performance:
+
+```{r}
+accuracy(num_turistas_flm, test)
+test_forecast(actual = num_turistas_ts,
+              forecast.obj = num_turistas_flm,
+              test = test)
+```
+
+4.  Plot the model:
+
+```{r}
+plot_forecast(num_turistas_flm)
+```
+
+## ARIMA
+
+### Non-automatic ARIMA
+
+1.  We identify the ARIMA process first to decide :
+
+```{r}
+plot(num_turistas_ts)
+plot(decompose(num_turistas_ts))
+par(mfrow = c(1,2))
+acf(num_turistas_ts)
+pacf(num_turistas_ts)
+```
+
+2.  We fit an ARIMA model with the train partition:
+
+```{r}
+num_turistas_arima <- arima(train, 
+                            order = c(2,0,0),
+                            seasonal = list(order = c(2,1,0)))
+summary(num_turistas_arima)
+```
+
+3.    We check the residuals:
+
+```{r}
+checkresiduals(num_turistas_arima)
+```
+
+4.    We now forecast the trained model:
+
+```{r}
+num_turistas_fc <- forecast(num_turistas_arima, h = 12)
+```
+
+5.  We evaluate the model's performance:
+
+```{r}
+accuracy(num_turistas_fc, test)
+test_forecast(actual = num_turistas_ts,
+              forecast.obj = num_turistas_fc,
+              test = test)
+```
+
+### Automatic ARIMA
+
+1.    We apply the function `auto.arima`to the ts object:
+
+```{r}
+num_turistas_arima2 <- auto.arima(train)
+summary(num_turistas_arima2)
+```
+
+2.    We check the residuals:
+
+```{r}
+checkresiduals(num_turistas_arima2)
+```
+
+4.    We now forecast the trained model:
+
+```{r}
+num_turistas_fc2 <- forecast(num_turistas_arima2, h = 12)
+```
+
+5.  We evaluate the model's performance:
+
+```{r}
+accuracy(num_turistas_fc2, test)
+test_forecast(actual = num_turistas_ts,
+              forecast.obj = num_turistas_fc2,
+              test = test)
+```
+
+6.    We can improvise with different search parameters:
+
+```{r}
+num_turistas_arima3 <- auto.arima(train,
+                                  max.order = 5,
+                                  D = 1,
+                                  d = 1,
+                                  stepwise = FALSE,
+                                  approximation = FALSE)
+summary(num_turistas_arima3)
+```
+
+## Machine Learning
+
+Pending writing **Random Forest**, **GBM**, and **AutoML**.

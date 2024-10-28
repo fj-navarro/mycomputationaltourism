@@ -1,0 +1,297 @@
+# Univariate and Monthly
+
+## Incoming Total Number of Tourists to Spain
+
+### Loading libraries
+
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+library(TSstudio)
+library(tidyverse)
+library(forecast)
+library(dplyr)
+library(lubridate)
+library(plotly)
+library(stringr)
+library(anytime)
+```
+
+### Importing the dataset
+
+```{r message=FALSE}
+num_turistas_raw <- read_excel("data/num_turistas.xlsx", skip = 6)
+```
+
+### Characterizing the TS dataset
+
+```{r}
+class(num_turistas_raw)
+head(num_turistas_raw)
+```
+
+### Preprocessing
+
+1.  Extract the information from the sheet:
+
+```{r}
+num_turistas_adj <- num_turistas_raw[2,]
+head(num_turistas_adj)
+```
+
+2.  Pivot the table:
+
+```{r}
+num_turistas_pvt <- num_turistas_adj |>
+  pivot_longer(cols = contains("M"),
+               names_to = "date",
+               values_to = "tourists", 
+               values_drop_na = FALSE)
+head(num_turistas_pvt)
+```
+
+3.  Change the date column from chr to date format:
+
+```{r}
+# Change the "M" character for "-"
+num_turistas_pvt$date <- str_replace(num_turistas_pvt$date, "M", "-")
+num_turistas_pvt$date <- anydate(num_turistas_pvt$date)
+head(num_turistas_pvt)
+```
+
+4.  Arrange the data by date:
+
+```{r}
+num_turistas_ord <- num_turistas_pvt |>
+  arrange(date)
+head(num_turistas_ord)
+class(num_turistas_ord)
+```
+
+5.  Identify if there are na and outliers:
+
+```{r}
+# Identify if na exist
+any(is.na(num_turistas_ord))
+```
+
+```{r}
+# Identify the ts outliers
+tsoutliers(num_turistas_ord$tourists)
+```
+
+6.  Make a ts object:
+
+```{r}
+# Set the start and end year of the ts
+start_point <- c(year(min(num_turistas_ord$date)), month(min(num_turistas_ord$date)))
+```
+
+```{r}
+# Create a ts object
+num_turistas_ts <- ts(num_turistas_ord$tourists,
+                      start = start_point,
+                      frequency = 12)
+head(num_turistas_ts)
+ts_info(num_turistas_ts)
+```
+
+```{r}
+# Plot the ts object
+ts_plot(num_turistas_ts)
+```
+
+### Decomposition of TS
+
+1.  Calculate MA of the ts object:
+
+```{r}
+num_turistas_ma <- ts_ma(num_turistas_ts,
+                    n = c(3,5),
+                    plot = TRUE,
+                    multiple = TRUE)
+```
+
+2.  Plot the MA3 and MA5:
+
+```{r}
+par(mfrow=c(1,2))
+plot.ts(num_turistas_ma$ma_3)
+plot.ts(num_turistas_ma$ma_5)
+```
+
+3.  Perform classical decomposition:
+
+```{r}
+num_turistas_dc <- decompose(num_turistas_ts, type = "additive")
+```
+
+4.  Plot the output of the decompose function:
+
+```{r}
+plot(num_turistas_dc)
+```
+
+### Seasonality analysis
+
+1.  Build a seasonal plot:
+
+```{r}
+ts_seasonal(num_turistas_ts, type = "normal")
+```
+
+```{r echo=FALSE, results='hide', warning=FALSE}
+# Esta es otra opción a tener en cuenta
+num_turistas_detrend <- num_turistas_ts - decompose(num_turistas_ts)$trend
+ts_seasonal(num_turistas_detrend, type = "box")
+```
+
+2.  We can complement the visual analysis of the seasonal component by plotting the cycle and box plots:
+
+```{r}
+ts_seasonal(num_turistas_ts, type = "all")
+```
+
+3.  Alternatively, we can show a heatmap:
+
+```{r}
+ts_heatmap(num_turistas_ts, color = "Reds")
+```
+
+4.  The polar plot also offers a valuable perspective:
+
+```{r}
+ggseasonplot(num_turistas_ts, polar = TRUE)
+```
+
+5.  Let's use descriptive statistics to analyse seasonality.
+
+```{r}
+# First transform ts into a data.frame
+num_turistas_df <- data.frame(year = floor(time(num_turistas_ts)), 
+                              month = cycle(num_turistas_ts), 
+                              num_turistas = as.numeric(num_turistas_ts))
+
+# Set the month abbreviation and transform it as a factor
+num_turistas_df$month <- factor(month.abb[num_turistas_df$month], 
+                                levels = month.abb)
+head(num_turistas_df)
+```
+
+```{r}
+# Summarize the series by its frequency
+num_turistas_summary <- num_turistas_df |>
+  group_by(month) |>
+  summarise(mean = mean(num_turistas), sd = sd(num_turistas))
+num_turistas_summary
+```
+
+```{r}
+# Plot the summary of the Mean
+plot_ly(data = num_turistas_summary, x = ~month, y = ~mean, type = "bar", name = "Mean") |>
+  layout(title = "Num_Turistas - Monthly Average", yaxis = list(title = "Mean", range = c(1000000, 9000000)))
+```
+
+```{r}
+# Plot the monthly mean vs. standard deviation
+plot_ly(num_turistas_summary) |>
+  add_lines(x = ~month, y = ~mean, name = "Mean") |>
+  add_lines(x = ~month, y = ~sd, name = "Standard Deviation", 
+            yaxis = "y2", 
+            line = list(color = "red", 
+                        dash = "dash", 
+                        width = "3")) |>
+  layout(title = "Num.Tourists to Spain - Monthly Average vs Standard Deviation",
+         yaxis = list(title = "Mean"),
+         yaxis2 = list(overlaying = "y",
+                       side = "right",
+                       title = "Standard Deviation"),
+         xaxis = list(title = "Month"),
+         legend = list(x = 0.05, y = 0.9),
+         margin = list(l = 50, r = 50))
+```
+
+```{r}
+# Plot the distribution of the frequency units by using a density plot
+ggplot(num_turistas_df, aes(x = num_turistas)) +
+  geom_density(aes(fill = month)) +
+  ggtitle("Num_turistas - Kernel Density Estimates by Month") +
+  facet_grid(rows = vars(as.factor(month)))
+```
+
+```{r}
+boxplot(num_turistas_df$num_turistas)
+```
+
+### Correlation (lag) analysis
+
+1.  Use the `acf` function:
+
+```{r}
+acf(num_turistas_ts, lag.max = 60)
+```
+
+```{r}
+# We can also use this for better visualization
+ts_cor(num_turistas_ts)
+```
+
+2.  We can zoom in on the relationship of the series with the last three seasonal lags:
+
+```{r}
+ts_lags(num_turistas_ts, lags = c(12,24,36))
+```
+
+### Cross-correlation (causality) analysis
+
+[**Processing 2nd dataset as ts object**]{.underline}
+
+```{r message=FALSE}
+# Import the dataset 
+ipc_raw <- read_excel("data/ipc.xlsx", skip = 6)
+```
+
+```{r}
+# Characterize the TS dataset 
+class(ipc_raw)
+head(ipc_raw)
+```
+
+```{r}
+# Extract the information from the sheet
+colnames(ipc_raw) <- c("A", "Index")
+ipc_adj <- filter(ipc_raw, grepl("Índice", A))
+ipc_adj$Index <- format(ipc_adj$Index, nsmall = 3)
+ipc_adj <- transform(ipc_adj, Index = rev(Index))
+str(ipc_adj)
+head(ipc_adj)
+tail(ipc_adj)
+```
+
+```{r}
+# Identify if na exist
+any(is.na(ipc_adj))
+# Identify outliers
+ipc_adj$Index <- as.numeric(ipc_adj$Index)
+tsoutliers(ipc_adj$Index)
+```
+
+```{r}
+# Create a ts object
+ipc_ts <- ts(data = ipc_adj$Index,
+             start = c(2002,1),
+             frequency = 12)
+head(ipc_ts)
+ts_info(ipc_ts)
+```
+
+```{r}
+# Plot the ts object
+ts_plot(ipc_ts)
+```
+
+[**Cross-correlation analysis**]{.underline}
+
+```{r}
+ccf(x = ipc_ts, y = num_turistas_ts, lag.max = 60)
+ccf_plot(x = ipc_ts, y = num_turistas_ts, lags = 0:12)
+```

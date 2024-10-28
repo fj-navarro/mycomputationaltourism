@@ -2,8 +2,18 @@
 
 This is a Quarto book.
 
-To learn more about Quarto books visit <https://quarto.org/docs/books>.
-
-```{r}
-1 + 1
-```
+-   Time series analysis:
+    -   Time series description/examination
+    -   Time series forecast
+-   Multivariate analysis:
+    -   Causal relationship between variables
+    -   Structural Equations 
+-   Network analysis:
+    -   Dynamics of external digital transformation networks
+-   Machine learning/BD:
+    -   Prices in Hospitality
+    -   Customer satisfaction
+-   Agent-based modeling:
+    -   Overtourism
+-   Geographical inteligence:
+    -   Hotel location optimization
